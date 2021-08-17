@@ -23,7 +23,7 @@ const float mie_scale_height = 1200.0f;
 const float ozone_base = 25000.0f;
 const float ozone_scale_height = 7500.0f;
 
-const int step_count = 50;
+const int step_count = 100;
 
 float map(float input_value, float input_start, float input_end, float output_start, float output_end)
 {
@@ -233,8 +233,8 @@ float mie_image[128][128][128][3];
 
 unsigned char transmittance_image[1024][1024][3];
 
-const unsigned int rayleigh_file_header[3] = {128, 128, 128};
-const unsigned int mie_file_header[3] = {128, 128, 128};
+const unsigned int rayleigh_file_header[4] = {128, 128, 128, 3};
+const unsigned int mie_file_header[4] = {128, 128, 128, 3};
 
 int main()
 {
@@ -249,21 +249,21 @@ int main()
 		{
 			for (int sun_angle_index = 0; sun_angle_index < 128; sun_angle_index++)
 			{
-				float view_height_coordinate = float(view_height_index) / 127.0;
-				float view_angle_coordinate = float(view_angle_index) / 127.0;
-				float sun_angle_coordinate = float(sun_angle_index) / 127.0;
+				float view_height_coordinate = float(view_height_index) / 127.0f;
+				float view_angle_coordinate = float(view_angle_index) / 127.0f;
+				float sun_angle_coordinate = float(sun_angle_index) / 127.0f;
 
-				float view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0);
+				float view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0f);
 
-				float view_angle = (2.0 * view_angle_coordinate) - 1.0;
-				view_angle = 0.5 * pi * glm::sign(view_angle) * glm::pow(view_angle, 2.0);
+				float view_angle = (2.0f * view_angle_coordinate) - 1.0f;
+				view_angle = 0.5f * pi * glm::sign(view_angle) * glm::pow(view_angle, 2.0f);
 
-				float sun_angle = (2.0 * sun_angle_coordinate) - 1.0;
-				sun_angle = 0.5 * pi * glm::sign(sun_angle) * glm::pow(sun_angle, 2.0);
+				float sun_angle = (2.0f * sun_angle_coordinate) - 1.0f;
+				sun_angle = 0.5f * pi * glm::sign(sun_angle) * glm::pow(sun_angle, 2.0f);
 
-				glm::vec3 view_position = glm::vec3(0.0, glm::max(view_height, 1.0f), 0.0);
-				glm::vec3 view_direction = glm::vec3(0.0, glm::sin(view_angle), glm::cos(view_angle));
-				glm::vec3 sun_direction = glm::vec3(0.0, glm::sin(sun_angle), glm::cos(sun_angle));
+				glm::vec3 view_position = glm::vec3(0.0f, glm::max(view_height, 1.0f), 0.0f);
+				glm::vec3 view_direction = glm::vec3(0.0f, glm::sin(view_angle), glm::cos(view_angle));
+				glm::vec3 sun_direction = glm::vec3(0.0f, glm::sin(sun_angle), glm::cos(sun_angle));
 
 				glm::vec3 rayleigh_color;
 				glm::vec3 mie_color;
@@ -288,20 +288,20 @@ int main()
 	{
 		for (int view_angle_index = 0; view_angle_index < 1024; view_angle_index++)
 		{
-			float view_height_coordinate = float(view_height_index) / 1023.0;
-			float view_angle_coordinate = float(view_angle_index) / 1023.0;
+			float view_height_coordinate = float(view_height_index) / 1023.0f;
+			float view_angle_coordinate = float(view_angle_index) / 1023.0f;
 
 			float view_height = atmosphere_height * view_height_coordinate;
-			float view_angle = 0.5 * pi * ((2.0 * view_angle_coordinate) - 1.0);
+			float view_angle = 0.5f * pi * ((2.0f * view_angle_coordinate) - 1.0f);
 
-			glm::vec3 view_position = glm::vec3(0.0, glm::max(view_height, 1.0f), 0.0);
-			glm::vec3 view_direction = glm::vec3(0.0, glm::sin(view_angle), glm::cos(view_angle));
+			glm::vec3 view_position = glm::vec3(0.0f, glm::max(view_height, 1.0f), 0.0f);
+			glm::vec3 view_direction = glm::vec3(0.0f, glm::sin(view_angle), glm::cos(view_angle));
 
 			glm::vec3 transmittance = render_transmittance(view_position, view_direction);
 
-			transmittance_image[view_angle_index][view_height_index][0] = (unsigned char)(255.0 * transmittance.x);
-			transmittance_image[view_angle_index][view_height_index][1] = (unsigned char)(255.0 * transmittance.y);
-			transmittance_image[view_angle_index][view_height_index][2] = (unsigned char)(255.0 * transmittance.z);
+			transmittance_image[view_angle_index][view_height_index][0] = (unsigned char)(255.0f * transmittance.x);
+			transmittance_image[view_angle_index][view_height_index][1] = (unsigned char)(255.0f * transmittance.y);
+			transmittance_image[view_angle_index][view_height_index][2] = (unsigned char)(255.0f * transmittance.z);
 		}
 	});
 
@@ -327,6 +327,8 @@ int main()
 	mie_file.close();
 
 	transmittance_file.close();
+
+	std::cout << "Done!";
 
 	return 0;
 }
