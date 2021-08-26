@@ -8,7 +8,7 @@
 
 const float pi = 3.141592653589793f;
 
-const float earth_radius = 6378100.0f;
+const float earth_radius = 6371008.7714f;
 const glm::vec3 earth_center = glm::vec3(0.0f, -1.0f * earth_radius, 0.0f);
 
 const float atmosphere_height = 50000.0f;
@@ -21,16 +21,9 @@ const float rayleigh_scale_height = 8000.0f;
 const float mie_scale_height = 1200.0f;
 
 const float ozone_base = 25000.0f;
-const float ozone_scale_height = 7500.0f;
+const float ozone_scale_height = 3250.0f;
 
-const int step_count = 100;
-
-float map(float input_value, float input_start, float input_end, float output_start, float output_end)
-{
-	float slope = (output_end - output_start) / (input_end - input_start);
-
-	return glm::clamp(output_start + (slope * (input_value - input_start)), glm::min(output_start, output_end), glm::max(output_start, output_end));
-}
+const int step_count = 1000;
 
 float get_ray_height(glm::vec3 ray_position)
 {
@@ -136,43 +129,47 @@ std::tuple<glm::vec3, glm::vec3> render_atmosphere(glm::vec3 view_position, glm:
 		view_mie_depth += mie_depth;
 		view_ozone_depth += ozone_depth;
 
-		glm::vec3 sun_ray_position = view_position;
-		float sun_step_size = ray_sphere_intersections(sun_ray_position, sun_direction, atmosphere_height).x / float(step_count);
+		glm::vec3 sun_ray_position = view_ray_position;
 
-		float sun_rayleigh_depth = 0.0f;
-		float sun_mie_depth = 0.0f;
-		float sun_ozone_depth = 0.0f;
-
-		float previous_sun_ray_height = get_ray_height(sun_ray_position);
-
-		float previous_sun_rayleigh_density = atmosphere_density(previous_sun_ray_height, rayleigh_scale_height);
-		float previous_sun_mie_density = atmosphere_density(previous_sun_ray_height, mie_scale_height);
-		float previous_sun_ozone_density = ozone_density(previous_sun_ray_height);
-
-		for (int sun_step_index = 0; sun_step_index < step_count; sun_step_index++)
+		if (ray_sphere_intersections(sun_ray_position, sun_direction, 0.0).x == 0.0)
 		{
-			float current_sun_ray_height = get_ray_height(sun_ray_position + (sun_direction * sun_step_size));
+			float sun_rayleigh_depth = 0.0f;
+			float sun_mie_depth = 0.0f;
+			float sun_ozone_depth = 0.0f;
 
-			float current_sun_rayleigh_density = atmosphere_density(current_sun_ray_height, rayleigh_scale_height);
-			float current_sun_mie_density = atmosphere_density(current_sun_ray_height, mie_scale_height);
-			float current_sun_ozone_density = ozone_density(current_sun_ray_height);
+			float sun_step_size = ray_sphere_intersections(sun_ray_position, sun_direction, atmosphere_height).x / float(step_count);
 
-			sun_rayleigh_depth += 0.5f * (previous_sun_rayleigh_density + current_sun_rayleigh_density) * sun_step_size;
-			sun_mie_depth += 0.5f * (previous_sun_mie_density + current_sun_mie_density) * sun_step_size;
-			sun_ozone_depth += 0.5f * (previous_sun_ozone_density + current_sun_ozone_density) * sun_step_size;
+			float previous_sun_ray_height = get_ray_height(sun_ray_position);
 
-			previous_sun_rayleigh_density = current_sun_rayleigh_density;
-			previous_sun_mie_density = current_sun_mie_density;
-			previous_sun_ozone_density = current_sun_ozone_density;
+			float previous_sun_rayleigh_density = atmosphere_density(previous_sun_ray_height, rayleigh_scale_height);
+			float previous_sun_mie_density = atmosphere_density(previous_sun_ray_height, mie_scale_height);
+			float previous_sun_ozone_density = ozone_density(previous_sun_ray_height);
 
-			sun_ray_position += sun_direction * sun_step_size;
+			for (int sun_step_index = 0; sun_step_index < step_count; sun_step_index++)
+			{
+				float current_sun_ray_height = get_ray_height(sun_ray_position + (sun_direction * sun_step_size));
+
+				float current_sun_rayleigh_density = atmosphere_density(current_sun_ray_height, rayleigh_scale_height);
+				float current_sun_mie_density = atmosphere_density(current_sun_ray_height, mie_scale_height);
+				float current_sun_ozone_density = ozone_density(current_sun_ray_height);
+
+				sun_rayleigh_depth += 0.5f * (previous_sun_rayleigh_density + current_sun_rayleigh_density) * sun_step_size;
+				sun_mie_depth += 0.5f * (previous_sun_mie_density + current_sun_mie_density) * sun_step_size;
+				sun_ozone_depth += 0.5f * (previous_sun_ozone_density + current_sun_ozone_density) * sun_step_size;
+
+				previous_sun_rayleigh_density = current_sun_rayleigh_density;
+				previous_sun_mie_density = current_sun_mie_density;
+				previous_sun_ozone_density = current_sun_ozone_density;
+
+				sun_ray_position += sun_direction * sun_step_size;
+			}
+		
+			glm::vec3 scattering_integrand = (rayleigh_coefficient * (view_rayleigh_depth + sun_rayleigh_depth)) + ((mie_coefficient / 0.9f) * (view_mie_depth + sun_mie_depth)) + (ozone_coefficient * (view_ozone_depth + sun_ozone_depth));
+			glm::vec3 scattered_light = glm::exp(-1.0f * scattering_integrand);
+
+			rayleigh_color += scattered_light * rayleigh_depth;
+			mie_color += scattered_light * mie_depth;
 		}
-
-		glm::vec3 scattering_integrand = (rayleigh_coefficient * (view_rayleigh_depth + sun_rayleigh_depth)) + ((mie_coefficient / 0.9f) * (view_mie_depth + sun_mie_depth)) + (ozone_coefficient * (view_ozone_depth + sun_ozone_depth));
-		glm::vec3 scattered_light = glm::exp(-1.0f * scattering_integrand);
-
-		rayleigh_color += scattered_light * rayleigh_depth;
-		mie_color += scattered_light * mie_depth;
 
 		previous_view_rayleigh_density = current_view_rayleigh_density;
 		previous_view_mie_density = current_view_mie_density;
@@ -194,9 +191,6 @@ glm::vec3 render_transmittance(glm::vec3 view_position, glm::vec3 view_direction
 	float view_rayleigh_depth = 0.0f;
 	float view_mie_depth = 0.0f;
 	float view_ozone_depth = 0.0f;
-
-	glm::vec3 rayleigh_color = glm::vec3(0.0f, 0.0f, 0.0f);
-	glm::vec3 mie_color = glm::vec3(0.0f, 0.0f, 0.0f);
 
 	float previous_view_ray_height = get_ray_height(view_ray_position);
 
@@ -231,10 +225,12 @@ glm::vec3 render_transmittance(glm::vec3 view_position, glm::vec3 view_direction
 float rayleigh_image[128][128][128][3];
 float mie_image[128][128][128][3];
 
-unsigned char transmittance_image[1024][1024][3];
+float transmittance_image[1024][1024][3];
 
 const unsigned int rayleigh_file_header[4] = {128, 128, 128, 3};
 const unsigned int mie_file_header[4] = {128, 128, 128, 3};
+
+const unsigned int transmittance_file_header[3] = {1024, 1024, 3};
 
 int main()
 {
@@ -256,14 +252,14 @@ int main()
 				float view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0f);
 
 				float view_angle = (2.0f * view_angle_coordinate) - 1.0f;
-				view_angle = 0.5f * pi * glm::sign(view_angle) * glm::pow(view_angle, 2.0f);
+				view_angle = glm::acos(glm::sign(view_angle) * glm::pow(view_angle, 2.0f));
 
 				float sun_angle = (2.0f * sun_angle_coordinate) - 1.0f;
-				sun_angle = 0.5f * pi * glm::sign(sun_angle) * glm::pow(sun_angle, 2.0f);
+				sun_angle = glm::acos(glm::sign(sun_angle) * glm::pow(sun_angle, 2.0f));
 
-				glm::vec3 view_position = glm::vec3(0.0f, glm::max(view_height, 1.0f), 0.0f);
-				glm::vec3 view_direction = glm::vec3(0.0f, glm::sin(view_angle), glm::cos(view_angle));
-				glm::vec3 sun_direction = glm::vec3(0.0f, glm::sin(sun_angle), glm::cos(sun_angle));
+				glm::vec3 view_position = glm::vec3(0.0f, glm::clamp(view_height, 0.001f, atmosphere_height - 0.001f), 0.0f);
+				glm::vec3 view_direction = glm::vec3(0.0f, glm::cos(view_angle), glm::sin(view_angle));
+				glm::vec3 sun_direction = glm::vec3(0.0f, glm::cos(sun_angle), glm::sin(sun_angle));
 
 				glm::vec3 rayleigh_color;
 				glm::vec3 mie_color;
@@ -291,17 +287,19 @@ int main()
 			float view_height_coordinate = float(view_height_index) / 1023.0f;
 			float view_angle_coordinate = float(view_angle_index) / 1023.0f;
 
-			float view_height = atmosphere_height * view_height_coordinate;
-			float view_angle = 0.5f * pi * ((2.0f * view_angle_coordinate) - 1.0f);
+			float view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0f);
 
-			glm::vec3 view_position = glm::vec3(0.0f, glm::max(view_height, 1.0f), 0.0f);
-			glm::vec3 view_direction = glm::vec3(0.0f, glm::sin(view_angle), glm::cos(view_angle));
+			float view_angle = (2.0f * view_angle_coordinate) - 1.0f;
+			view_angle = glm::acos(glm::sign(view_angle) * glm::pow(view_angle, 2.0f));
+
+			glm::vec3 view_position = glm::vec3(0.0f, glm::clamp(view_height, 0.001f, atmosphere_height - 0.001f), 0.0f);
+			glm::vec3 view_direction = glm::vec3(0.0f, glm::cos(view_angle), glm::sin(view_angle));
 
 			glm::vec3 transmittance = render_transmittance(view_position, view_direction);
 
-			transmittance_image[view_angle_index][view_height_index][0] = (unsigned char)(255.0f * transmittance.x);
-			transmittance_image[view_angle_index][view_height_index][1] = (unsigned char)(255.0f * transmittance.y);
-			transmittance_image[view_angle_index][view_height_index][2] = (unsigned char)(255.0f * transmittance.z);
+			transmittance_image[view_angle_index][view_height_index][0] = transmittance.x;
+			transmittance_image[view_angle_index][view_height_index][1] = transmittance.y;
+			transmittance_image[view_angle_index][view_height_index][2] = transmittance.z;
 		}
 	});
 
@@ -321,6 +319,7 @@ int main()
 	mie_file.write((const char*)(mie_file_header), sizeof(mie_file_header));
 	mie_file.write((const char*)(mie_image), sizeof(mie_image));
 
+	transmittance_file.write((const char*)(transmittance_file_header), sizeof(transmittance_file_header));
 	transmittance_file.write((const char*)(transmittance_image), sizeof(transmittance_image));
 
 	rayleigh_file.close();
@@ -328,7 +327,7 @@ int main()
 
 	transmittance_file.close();
 
-	std::cout << "Done!";
+	std::cout << "Done!" << std::endl;
 
 	return 0;
 }
