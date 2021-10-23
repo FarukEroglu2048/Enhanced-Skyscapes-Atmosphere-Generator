@@ -6,156 +6,141 @@
 #include <vector>
 #include <execution>
 
-const float pi = 3.141592653589793f;
+const double earth_radius = 6371008.7714;
+const glm::dvec3 earth_center = glm::dvec3(0.0, -1.0 * earth_radius, 0.0);
 
-const float earth_radius = 6371008.7714f;
-const glm::vec3 earth_center = glm::vec3(0.0f, -1.0f * earth_radius, 0.0f);
+const double atmosphere_height = 50000.0;
 
-const float atmosphere_height = 50000.0f;
+const double atmosphere_base = -0.01;
+const double atmosphere_top = atmosphere_height + 0.01;
 
-const glm::vec3 rayleigh_coefficient = glm::vec3(5.8e-6f, 1.35e-5f, 3.31e-5f);
-const float mie_coefficient = 2.1e-5f;
-const glm::vec3 ozone_coefficient = 0.06f * glm::vec3(3.426e-5f, 8.298e-5f, 0.356e-5f);
+const glm::dvec3 rayleigh_coefficient = glm::dvec3(5.8e-6, 1.35e-5, 3.31e-5);
+const double mie_coefficient = 2.1e-5;
+const glm::dvec3 ozone_coefficient = 0.06 * glm::dvec3(3.426e-5, 8.298e-5, 0.356e-5);
 
-const float rayleigh_scale_height = 8000.0f;
-const float mie_scale_height = 1200.0f;
+const double rayleigh_scale_height = 8000.0;
+const double mie_scale_height = 1200.0;
 
-const float ozone_base = 25000.0f;
-const float ozone_scale_height = 3250.0f;
+const double ozone_base = 25000.0;
+const double ozone_scale_height = 3250.0;
 
 const int step_count = 1000;
 
-float get_ray_height(glm::vec3 ray_position)
+double get_ray_height(glm::dvec3 ray_position)
 {
 	return glm::length(ray_position - earth_center) - earth_radius;
 }
 
-glm::vec2 ray_sphere_intersections(glm::vec3 ray_position, glm::vec3 ray_direction, float sphere_height)
+double map(double input_value, double input_start, double input_end, double output_start, double output_end)
 {
-	glm::vec3 ray_earth_vector = ray_position - earth_center;
+	double slope = (output_end - output_start) / (input_end - input_start);
 
-	float coefficient_1 = 2.0f * glm::dot(ray_direction, ray_earth_vector);
-	float coefficient_2 = glm::dot(ray_earth_vector, ray_earth_vector) - glm::pow(earth_radius + sphere_height, 2.0f);
+	return glm::clamp(output_start + (slope * (input_value - input_start)), glm::min(output_start, output_end), glm::max(output_start, output_end));
+}
 
-	float discriminant = glm::pow(coefficient_1, 2.0f) - (4.0f * coefficient_2);
+glm::dvec2 ray_sphere_intersections(glm::dvec3 ray_position, glm::dvec3 ray_direction, double sphere_height)
+{
+	glm::dvec3 ray_earth_vector = ray_position - earth_center;
 
-	if (discriminant < 0.0f) return glm::vec2(0.0f, 0.0f);
+	double coefficient_1 = 2.0 * glm::dot(ray_direction, ray_earth_vector);
+	double coefficient_2 = glm::dot(ray_earth_vector, ray_earth_vector) - glm::pow(earth_radius + sphere_height, 2.0);
+
+	double discriminant = glm::pow(coefficient_1, 2.0) - (4.0 * coefficient_2);
+
+	if (discriminant < 0.0) return glm::dvec2(0.0, 0.0);
 	else
 	{
-		float lower_solution = ((-1.0f * coefficient_1) - glm::sqrt(discriminant)) / 2.0f;
-		float higher_solution = ((-1.0f * coefficient_1) + glm::sqrt(discriminant)) / 2.0f;
+		double lower_solution = ((-1.0 * coefficient_1) - glm::sqrt(discriminant)) / 2.0;
+		double higher_solution = ((-1.0 * coefficient_1) + glm::sqrt(discriminant)) / 2.0;
 
-		if (lower_solution < 0.0f) return glm::vec2(glm::max(higher_solution, 0.0f), 0.0f);
-		else return glm::vec2(lower_solution, higher_solution);
+		if (lower_solution < 0.0) return glm::dvec2(glm::max(higher_solution, 0.0), 0.0);
+		else return glm::dvec2(lower_solution, higher_solution);
 	}
 }
 
-glm::vec2 ray_atmosphere_intersections(glm::vec3 ray_position, glm::vec3 ray_direction)
+double ray_atmosphere_intersection(glm::dvec3 ray_position, glm::dvec3 ray_direction)
 {
-	glm::vec2 layer_intersections = glm::vec2(0.0f, 0.0f);
+	glm::dvec2 inner_sphere_intersections = ray_sphere_intersections(ray_position, ray_direction, atmosphere_base);
+	glm::dvec2 outer_sphere_intersections = ray_sphere_intersections(ray_position, ray_direction, atmosphere_top);
 
-	glm::vec2 inner_sphere_intersections = ray_sphere_intersections(ray_position, ray_direction, 0.0f);
-	glm::vec2 outer_sphere_intersections = ray_sphere_intersections(ray_position, ray_direction, atmosphere_height);
+	double lower_distance = glm::min(inner_sphere_intersections.x, outer_sphere_intersections.x);
+	double higher_distance = glm::max(inner_sphere_intersections.x, outer_sphere_intersections.x);
 
-	float ray_height = get_ray_height(ray_position);
-
-	if (ray_height < 0.0f)
-	{
-		layer_intersections.x = inner_sphere_intersections.x;
-		layer_intersections.y = outer_sphere_intersections.x - inner_sphere_intersections.x;
-	}
-	else if ((ray_height >= 0.0f) && (ray_height <= atmosphere_height))
-	{
-		float lower_distance = glm::min(inner_sphere_intersections.x, outer_sphere_intersections.x);
-		float higher_distance = glm::max(inner_sphere_intersections.x, outer_sphere_intersections.x);
-
-		if (lower_distance == 0.0f) layer_intersections.y = higher_distance;
-		else layer_intersections.y = lower_distance;
-	}
-	else if (ray_height > atmosphere_height)
-	{
-		layer_intersections.x = outer_sphere_intersections.x;
-
-		if (inner_sphere_intersections.x == 0.0f) layer_intersections.y = outer_sphere_intersections.y - outer_sphere_intersections.x;
-		else layer_intersections.y = inner_sphere_intersections.x - outer_sphere_intersections.x;
-	}
-
-	return layer_intersections;
+	if (lower_distance == 0.0) return higher_distance;
+	else return lower_distance;
 }
 
-float atmosphere_density(float ray_height, float scale_height)
+double atmosphere_density(double ray_height, double scale_height)
 {
-	return exp(-1.0f * (glm::max(ray_height, 0.0f) / scale_height));
+	return exp(-1.0 * (glm::max(ray_height, 0.0) / scale_height));
 }
 
-float ozone_density(float ray_height)
+double ozone_density(double ray_height)
 {
-	return exp(-1.0f * (glm::abs(ray_height - ozone_base) / ozone_scale_height));
+	return exp(-1.0 * (glm::abs(ray_height - ozone_base) / ozone_scale_height));
 }
 
-std::tuple<glm::vec3, glm::vec3> render_atmosphere(glm::vec3 view_position, glm::vec3 view_direction, glm::vec3 sun_direction)
+std::tuple<glm::dvec3, glm::dvec3> render_atmosphere(glm::dvec3 view_position, glm::dvec3 view_direction, glm::dvec3 sun_direction)
 {
-	glm::vec2 view_ray_intersections = ray_atmosphere_intersections(view_position, view_direction);
+	glm::dvec3 view_ray_position = view_position;
+	double view_step_size = ray_atmosphere_intersection(view_position, view_direction) / double(step_count);
 
-	glm::vec3 view_ray_position = view_position + (view_direction * view_ray_intersections.x);
-	float view_step_size = view_ray_intersections.y / float(step_count);
+	double view_rayleigh_depth = 0.0;
+	double view_mie_depth = 0.0;
+	double view_ozone_depth = 0.0;
 
-	float view_rayleigh_depth = 0.0f;
-	float view_mie_depth = 0.0f;
-	float view_ozone_depth = 0.0f;
+	glm::dvec3 rayleigh_color = glm::dvec3(0.0, 0.0, 0.0);
+	glm::dvec3 mie_color = glm::dvec3(0.0, 0.0, 0.0);
 
-	glm::vec3 rayleigh_color = glm::vec3(0.0f, 0.0f, 0.0f);
-	glm::vec3 mie_color = glm::vec3(0.0f, 0.0f, 0.0f);
+	double previous_view_ray_height = get_ray_height(view_ray_position);
 
-	float previous_view_ray_height = get_ray_height(view_ray_position);
-
-	float previous_view_rayleigh_density = atmosphere_density(previous_view_ray_height, rayleigh_scale_height);
-	float previous_view_mie_density = atmosphere_density(previous_view_ray_height, mie_scale_height);
-	float previous_view_ozone_density = ozone_density(previous_view_ray_height);
+	double previous_view_rayleigh_density = atmosphere_density(previous_view_ray_height, rayleigh_scale_height);
+	double previous_view_mie_density = atmosphere_density(previous_view_ray_height, mie_scale_height);
+	double previous_view_ozone_density = ozone_density(previous_view_ray_height);
 
 	for (int view_step_index = 0; view_step_index < step_count; view_step_index++)
 	{
-		float current_view_ray_height = get_ray_height(view_ray_position + (view_direction * view_step_size));
+		double current_view_ray_height = get_ray_height(view_ray_position + (view_direction * view_step_size));
 
-		float current_view_rayleigh_density = atmosphere_density(current_view_ray_height, rayleigh_scale_height);
-		float current_view_mie_density = atmosphere_density(current_view_ray_height, mie_scale_height);
-		float current_view_ozone_density = ozone_density(current_view_ray_height);
+		double current_view_rayleigh_density = atmosphere_density(current_view_ray_height, rayleigh_scale_height);
+		double current_view_mie_density = atmosphere_density(current_view_ray_height, mie_scale_height);
+		double current_view_ozone_density = ozone_density(current_view_ray_height);
 
-		float rayleigh_depth = 0.5f * (previous_view_rayleigh_density + current_view_rayleigh_density) * view_step_size;
-		float mie_depth = 0.5f * (previous_view_mie_density + current_view_mie_density) * view_step_size;
-		float ozone_depth = 0.5f * (previous_view_ozone_density + current_view_ozone_density) * view_step_size;
+		double rayleigh_depth = 0.5 * (previous_view_rayleigh_density + current_view_rayleigh_density) * view_step_size;
+		double mie_depth = 0.5 * (previous_view_mie_density + current_view_mie_density) * view_step_size;
+		double ozone_depth = 0.5 * (previous_view_ozone_density + current_view_ozone_density) * view_step_size;
 
 		view_rayleigh_depth += rayleigh_depth;
 		view_mie_depth += mie_depth;
 		view_ozone_depth += ozone_depth;
 
-		glm::vec3 sun_ray_position = view_ray_position;
+		glm::dvec3 sun_ray_position = view_ray_position;
 
-		if (ray_sphere_intersections(sun_ray_position, sun_direction, 0.0).x == 0.0)
+		if (ray_sphere_intersections(sun_ray_position, sun_direction, atmosphere_base).x == 0.0)
 		{
-			float sun_rayleigh_depth = 0.0f;
-			float sun_mie_depth = 0.0f;
-			float sun_ozone_depth = 0.0f;
+			double sun_rayleigh_depth = 0.0;
+			double sun_mie_depth = 0.0;
+			double sun_ozone_depth = 0.0;
 
-			float sun_step_size = ray_sphere_intersections(sun_ray_position, sun_direction, atmosphere_height).x / float(step_count);
+			double sun_step_size = ray_sphere_intersections(sun_ray_position, sun_direction, atmosphere_top).x / double(step_count);
 
-			float previous_sun_ray_height = get_ray_height(sun_ray_position);
+			double previous_sun_ray_height = get_ray_height(sun_ray_position);
 
-			float previous_sun_rayleigh_density = atmosphere_density(previous_sun_ray_height, rayleigh_scale_height);
-			float previous_sun_mie_density = atmosphere_density(previous_sun_ray_height, mie_scale_height);
-			float previous_sun_ozone_density = ozone_density(previous_sun_ray_height);
+			double previous_sun_rayleigh_density = atmosphere_density(previous_sun_ray_height, rayleigh_scale_height);
+			double previous_sun_mie_density = atmosphere_density(previous_sun_ray_height, mie_scale_height);
+			double previous_sun_ozone_density = ozone_density(previous_sun_ray_height);
 
 			for (int sun_step_index = 0; sun_step_index < step_count; sun_step_index++)
 			{
-				float current_sun_ray_height = get_ray_height(sun_ray_position + (sun_direction * sun_step_size));
+				double current_sun_ray_height = get_ray_height(sun_ray_position + (sun_direction * sun_step_size));
 
-				float current_sun_rayleigh_density = atmosphere_density(current_sun_ray_height, rayleigh_scale_height);
-				float current_sun_mie_density = atmosphere_density(current_sun_ray_height, mie_scale_height);
-				float current_sun_ozone_density = ozone_density(current_sun_ray_height);
+				double current_sun_rayleigh_density = atmosphere_density(current_sun_ray_height, rayleigh_scale_height);
+				double current_sun_mie_density = atmosphere_density(current_sun_ray_height, mie_scale_height);
+				double current_sun_ozone_density = ozone_density(current_sun_ray_height);
 
-				sun_rayleigh_depth += 0.5f * (previous_sun_rayleigh_density + current_sun_rayleigh_density) * sun_step_size;
-				sun_mie_depth += 0.5f * (previous_sun_mie_density + current_sun_mie_density) * sun_step_size;
-				sun_ozone_depth += 0.5f * (previous_sun_ozone_density + current_sun_ozone_density) * sun_step_size;
+				sun_rayleigh_depth += 0.5 * (previous_sun_rayleigh_density + current_sun_rayleigh_density) * sun_step_size;
+				sun_mie_depth += 0.5 * (previous_sun_mie_density + current_sun_mie_density) * sun_step_size;
+				sun_ozone_depth += 0.5 * (previous_sun_ozone_density + current_sun_ozone_density) * sun_step_size;
 
 				previous_sun_rayleigh_density = current_sun_rayleigh_density;
 				previous_sun_mie_density = current_sun_mie_density;
@@ -164,8 +149,8 @@ std::tuple<glm::vec3, glm::vec3> render_atmosphere(glm::vec3 view_position, glm:
 				sun_ray_position += sun_direction * sun_step_size;
 			}
 		
-			glm::vec3 scattering_integrand = (rayleigh_coefficient * (view_rayleigh_depth + sun_rayleigh_depth)) + ((mie_coefficient / 0.9f) * (view_mie_depth + sun_mie_depth)) + (ozone_coefficient * (view_ozone_depth + sun_ozone_depth));
-			glm::vec3 scattered_light = glm::exp(-1.0f * scattering_integrand);
+			glm::dvec3 scattering_integrand = (rayleigh_coefficient * (view_rayleigh_depth + sun_rayleigh_depth)) + ((mie_coefficient / 0.9) * (view_mie_depth + sun_mie_depth)) + (ozone_coefficient * (view_ozone_depth + sun_ozone_depth));
+			glm::dvec3 scattered_light = glm::exp(-1.0 * scattering_integrand);
 
 			rayleigh_color += scattered_light * rayleigh_depth;
 			mie_color += scattered_light * mie_depth;
@@ -181,34 +166,32 @@ std::tuple<glm::vec3, glm::vec3> render_atmosphere(glm::vec3 view_position, glm:
 	return std::make_tuple(rayleigh_color, mie_color);
 }
 
-glm::vec3 render_transmittance(glm::vec3 view_position, glm::vec3 view_direction)
+glm::dvec3 render_transmittance(glm::dvec3 view_position, glm::dvec3 view_direction)
 {
-	glm::vec2 view_ray_intersections = ray_atmosphere_intersections(view_position, view_direction);
+	glm::dvec3 view_ray_position = view_position;
+	double view_step_size = ray_atmosphere_intersection(view_position, view_direction) / double(step_count);
 
-	glm::vec3 view_ray_position = view_position + (view_direction * view_ray_intersections.x);
-	float view_step_size = view_ray_intersections.y / float(step_count);
+	double view_rayleigh_depth = 0.0;
+	double view_mie_depth = 0.0;
+	double view_ozone_depth = 0.0;
 
-	float view_rayleigh_depth = 0.0f;
-	float view_mie_depth = 0.0f;
-	float view_ozone_depth = 0.0f;
+	double previous_view_ray_height = get_ray_height(view_ray_position);
 
-	float previous_view_ray_height = get_ray_height(view_ray_position);
-
-	float previous_view_rayleigh_density = atmosphere_density(previous_view_ray_height, rayleigh_scale_height);
-	float previous_view_mie_density = atmosphere_density(previous_view_ray_height, mie_scale_height);
-	float previous_view_ozone_density = ozone_density(previous_view_ray_height);
+	double previous_view_rayleigh_density = atmosphere_density(previous_view_ray_height, rayleigh_scale_height);
+	double previous_view_mie_density = atmosphere_density(previous_view_ray_height, mie_scale_height);
+	double previous_view_ozone_density = ozone_density(previous_view_ray_height);
 
 	for (int view_step_index = 0; view_step_index < step_count; view_step_index++)
 	{
-		float current_view_ray_height = get_ray_height(view_ray_position + (view_direction * view_step_size));
+		double current_view_ray_height = get_ray_height(view_ray_position + (view_direction * view_step_size));
 
-		float current_view_rayleigh_density = atmosphere_density(current_view_ray_height, rayleigh_scale_height);
-		float current_view_mie_density = atmosphere_density(current_view_ray_height, mie_scale_height);
-		float current_view_ozone_density = ozone_density(current_view_ray_height);
+		double current_view_rayleigh_density = atmosphere_density(current_view_ray_height, rayleigh_scale_height);
+		double current_view_mie_density = atmosphere_density(current_view_ray_height, mie_scale_height);
+		double current_view_ozone_density = ozone_density(current_view_ray_height);
 
-		view_rayleigh_depth += 0.5f * (previous_view_rayleigh_density + current_view_rayleigh_density) * view_step_size;
-		view_mie_depth += 0.5f * (previous_view_mie_density + current_view_mie_density) * view_step_size;
-		view_ozone_depth += 0.5f * (previous_view_ozone_density + current_view_ozone_density) * view_step_size;
+		view_rayleigh_depth += 0.5 * (previous_view_rayleigh_density + current_view_rayleigh_density) * view_step_size;
+		view_mie_depth += 0.5 * (previous_view_mie_density + current_view_mie_density) * view_step_size;
+		view_ozone_depth += 0.5 * (previous_view_ozone_density + current_view_ozone_density) * view_step_size;
 
 		previous_view_rayleigh_density = current_view_rayleigh_density;
 		previous_view_mie_density = current_view_mie_density;
@@ -217,9 +200,9 @@ glm::vec3 render_transmittance(glm::vec3 view_position, glm::vec3 view_direction
 		view_ray_position += view_direction * view_step_size;
 	}
 
-	glm::vec3 transmittance_integrand = (rayleigh_coefficient * view_rayleigh_depth) + ((mie_coefficient / 0.9f) * view_mie_depth) + (ozone_coefficient * view_ozone_depth);
+	glm::dvec3 transmittance_integrand = (rayleigh_coefficient * view_rayleigh_depth) + ((mie_coefficient / 0.9) * view_mie_depth) + (ozone_coefficient * view_ozone_depth);
 
-	return glm::exp(-1.0f * transmittance_integrand);
+	return glm::exp(-1.0 * transmittance_integrand);
 }
 
 float rayleigh_image[128][128][128][3];
@@ -245,24 +228,24 @@ int main()
 		{
 			for (int sun_angle_index = 0; sun_angle_index < 128; sun_angle_index++)
 			{
-				float view_height_coordinate = float(view_height_index) / 127.0f;
-				float view_angle_coordinate = float(view_angle_index) / 127.0f;
-				float sun_angle_coordinate = float(sun_angle_index) / 127.0f;
+				double view_height_coordinate = double(view_height_index) / 127.0;
+				double view_angle_coordinate = double(view_angle_index) / 127.0;
+				double sun_angle_coordinate = double(sun_angle_index) / 127.0;
 
-				float view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0f);
+				double view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0);
 
-				float view_angle = (2.0f * view_angle_coordinate) - 1.0f;
-				view_angle = glm::acos(glm::sign(view_angle) * glm::pow(view_angle, 2.0f));
+				double view_angle = (2.0 * view_angle_coordinate) - 1.0;
+				view_angle = glm::acos(glm::sign(view_angle) * glm::pow(view_angle, 2.0));
 
-				float sun_angle = (2.0f * sun_angle_coordinate) - 1.0f;
-				sun_angle = glm::acos(glm::sign(sun_angle) * glm::pow(sun_angle, 2.0f));
+				double sun_angle = (2.0 * sun_angle_coordinate) - 1.0;
+				sun_angle = glm::acos(glm::sign(sun_angle) * glm::pow(sun_angle, 2.0));
 
-				glm::vec3 view_position = glm::vec3(0.0f, glm::clamp(view_height, 0.001f, atmosphere_height - 0.001f), 0.0f);
-				glm::vec3 view_direction = glm::vec3(0.0f, glm::cos(view_angle), glm::sin(view_angle));
-				glm::vec3 sun_direction = glm::vec3(0.0f, glm::cos(sun_angle), glm::sin(sun_angle));
+				glm::dvec3 view_position = glm::dvec3(0.0, view_height, 0.0);
+				glm::dvec3 view_direction = glm::dvec3(0.0, glm::cos(view_angle), glm::sin(view_angle));
+				glm::dvec3 sun_direction = glm::dvec3(0.0, glm::cos(sun_angle), glm::sin(sun_angle));
 
-				glm::vec3 rayleigh_color;
-				glm::vec3 mie_color;
+				glm::dvec3 rayleigh_color;
+				glm::dvec3 mie_color;
 
 				std::tie(rayleigh_color, mie_color) = render_atmosphere(view_position, view_direction, sun_direction);
 
@@ -284,18 +267,18 @@ int main()
 	{
 		for (int view_angle_index = 0; view_angle_index < 1024; view_angle_index++)
 		{
-			float view_height_coordinate = float(view_height_index) / 1023.0f;
-			float view_angle_coordinate = float(view_angle_index) / 1023.0f;
+			double view_height_coordinate = double(view_height_index) / 1023.0;
+			double view_angle_coordinate = double(view_angle_index) / 1023.0;
 
-			float view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0f);
+			double view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0);
 
-			float view_angle = (2.0f * view_angle_coordinate) - 1.0f;
-			view_angle = glm::acos(glm::sign(view_angle) * glm::pow(view_angle, 2.0f));
+			double view_angle = (2.0 * view_angle_coordinate) - 1.0;
+			view_angle = glm::acos(glm::sign(view_angle) * glm::pow(view_angle, 2.0));
 
-			glm::vec3 view_position = glm::vec3(0.0f, glm::clamp(view_height, 0.001f, atmosphere_height - 0.001f), 0.0f);
-			glm::vec3 view_direction = glm::vec3(0.0f, glm::cos(view_angle), glm::sin(view_angle));
+			glm::dvec3 view_position = glm::dvec3(0.0, view_height, 0.0);
+			glm::dvec3 view_direction = glm::dvec3(0.0, glm::cos(view_angle), glm::sin(view_angle));
 
-			glm::vec3 transmittance = render_transmittance(view_position, view_direction);
+			glm::dvec3 transmittance = render_transmittance(view_position, view_direction);
 
 			transmittance_image[view_angle_index][view_height_index][0] = transmittance.x;
 			transmittance_image[view_angle_index][view_height_index][1] = transmittance.y;
