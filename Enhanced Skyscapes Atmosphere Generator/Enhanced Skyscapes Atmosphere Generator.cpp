@@ -9,20 +9,20 @@
 const double earth_radius = 6371008.7714;
 const glm::dvec3 earth_center = glm::dvec3(0.0, -1.0 * earth_radius, 0.0);
 
-const double atmosphere_height = 50000.0;
+const double atmosphere_height = 71000.0;
 
 const double atmosphere_base = -0.01;
 const double atmosphere_top = atmosphere_height + 0.01;
 
-const glm::dvec3 rayleigh_coefficient = glm::dvec3(5.8e-6, 1.35e-5, 3.31e-5);
+const glm::dvec3 rayleigh_coefficient = glm::dvec3(6.605e-6, 1.234e-5, 2.941e-5);
 const double mie_coefficient = 2.1e-5;
-const glm::dvec3 ozone_coefficient = 0.06 * glm::dvec3(3.426e-5, 8.298e-5, 0.356e-5);
+const glm::dvec3 ozone_coefficient = glm::dvec3(2.291e-6, 1.54e-6, 0.0);
 
-const double rayleigh_scale_height = 8000.0;
+const double rayleigh_scale_height = 8696.45;
 const double mie_scale_height = 1200.0;
 
-const double ozone_base = 25000.0;
-const double ozone_scale_height = 3250.0;
+const double ozone_base = 22349.9;
+const double ozone_thickness = 35660.71;
 
 const int step_count = 1000;
 
@@ -72,12 +72,12 @@ double ray_atmosphere_intersection(glm::dvec3 ray_position, glm::dvec3 ray_direc
 
 double atmosphere_density(double ray_height, double scale_height)
 {
-	return exp(-1.0 * (glm::max(ray_height, 0.0) / scale_height));
+	return glm::exp(-1.0 * (glm::max(ray_height, 0.0) / scale_height));
 }
 
 double ozone_density(double ray_height)
 {
-	return exp(-1.0 * (glm::abs(ray_height - ozone_base) / ozone_scale_height));
+	return glm::max(1.0 - (glm::abs(ray_height - ozone_base) / (ozone_thickness / 2.0)), 0.0);
 }
 
 std::tuple<glm::dvec3, glm::dvec3> render_atmosphere(glm::dvec3 view_position, glm::dvec3 view_direction, glm::dvec3 sun_direction)
