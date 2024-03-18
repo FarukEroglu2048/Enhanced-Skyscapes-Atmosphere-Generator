@@ -14,32 +14,32 @@
 const double earth_radius = 6371008.7714;
 const glm::dvec3 earth_center = glm::dvec3(0.0, -1.0 * earth_radius, 0.0);
 
-const double atmosphere_height = 71000.0;
+const double atmosphere_height = 50000.0;
 
-const double atmosphere_base = 1.0;
+const double atmosphere_base = -1.0;
 const double atmosphere_top = atmosphere_height + 1.0;
 
-const glm::dvec3 rayleigh_coefficient = glm::dvec3(6.605e-6, 1.234e-5, 2.941e-5);
+const glm::dvec3 rayleigh_coefficient = glm::dvec3(6.0e-6, 1.234e-5, 2.941e-5);
 
-const double mie_scattering_coefficient = 2.1e-5;
-const double mie_absorption_coefficient = 0.125 * mie_scattering_coefficient;
+const double mie_scattering_coefficient = 4.0e-6;
+const double mie_absorption_coefficient = mie_scattering_coefficient;
 
 const glm::dvec3 ozone_coefficient = glm::dvec3(2.291e-6, 1.54e-6, 0.0);
 
 const double rayleigh_scale_height = 8696.45;
-const double mie_scale_height = 1200.0;
+const double mie_scale_height = 1250.0;
 
 const double ozone_base = 22349.9;
 const double ozone_thickness = 35660.71;
 
 const int transmittance_step_count = 1024;
-const int multiple_scattering_step_count = 16;
-const int view_scattering_step_count = 512;
+const int multiple_scattering_step_count = 32;
+const int view_scattering_step_count = 1024;
 
-const int multiple_scattering_event_count = 4;
+const int multiple_scattering_event_count = 8;
 const int multiple_scattering_direction_count = 8;
 
-const int image_size_2d = 2048;
+const int image_size_2d = 1024;
 const int image_size_3d = 128;
 
 double transmittance_table[image_size_2d][image_size_2d][3];
@@ -109,6 +109,19 @@ double atmosphere_density(double ray_height, double scale_height)
 double ozone_density(double ray_height)
 {
 	return glm::max(1.0 - (glm::abs(ray_height - ozone_base) / (ozone_thickness / 2.0)), 0.0);
+}
+
+double rayleigh_phase(double cos_angle)
+{
+	return (3.0 * (1.0 + glm::pow(cos_angle, 2.0))) / (16.0 * glm::pi<double>());
+}
+
+double mie_phase(double cos_angle)
+{
+	const double mie_anisotropy = 0.75;
+	const double mie_anisotropy_squared = glm::pow(mie_anisotropy_squared, 2.0);
+
+	return (3.0 * (1.0 - mie_anisotropy_squared) * (1.0 + pow(cos_angle, 2.0))) / (8.0 * glm::pi<double>() * (2.0 + mie_anisotropy_squared) * pow(1.0 + mie_anisotropy_squared - (2.0 * mie_anisotropy * cos_angle), 1.5));
 }
 
 glm::dvec3 render_transmittance(glm::dvec3 view_position, glm::dvec3 view_direction, bool render_sun_transmittance)
@@ -329,15 +342,17 @@ int main()
 						double view_azimuth = (2.0 * view_elevation_coordinate) - 1.0;
 						view_azimuth *= glm::pi<double>();
 
-						glm::dvec3 view_direction = glm::dvec3(glm::sin(view_azimuth) * glm::cos(view_elevation), glm::sin(view_elevation), glm::cos(view_azimuth) * glm::cos(view_elevation));
+						glm::dvec3 view_direction = glm::dvec3(glm::sin(view_azimuth) * glm::sin(view_elevation), glm::cos(view_elevation), glm::cos(view_azimuth) * glm::sin(view_elevation));
 
 						glm::dvec3 current_rayleigh_color;
 						glm::dvec3 current_mie_color;
 							
 						std::tie(current_rayleigh_color, current_mie_color) = render_scattering(view_position, view_direction, sun_direction, multiple_scattering_index);
 
-						rayleigh_color += current_rayleigh_color;
-						mie_color += current_mie_color;
+						double view_sun_cos_angle = glm::dot(view_direction, sun_direction);
+
+						rayleigh_color += rayleigh_phase(view_sun_cos_angle) * current_rayleigh_color;
+						mie_color += mie_phase(view_sun_cos_angle) * current_mie_color;
 					}
 				}
 				
@@ -390,15 +405,15 @@ int main()
 		});
 	}
 
-	for (int view_height_index = 0; view_height_index < 128; view_height_index++)
+	for (int view_height_index = 0; view_height_index < image_size_3d; view_height_index++)
 	{
-		for (int view_angle_index = 0; view_angle_index < 128; view_angle_index++)
+		for (int view_angle_index = 0; view_angle_index < image_size_3d; view_angle_index++)
 		{
 			std::for_each(std::execution::par_unseq, image_indices_3d.begin(), image_indices_3d.end(), [&](int sun_angle_index)
 			{
-				double view_height_coordinate = double(view_height_index) / 127.0;
-				double view_angle_coordinate = double(view_angle_index) / 127.0;
-				double sun_angle_coordinate = double(sun_angle_index) / 127.0;
+				double view_height_coordinate = double(view_height_index) / double(image_size_3d - 1);
+				double view_angle_coordinate = double(view_angle_index) / double(image_size_3d - 1);
+				double sun_angle_coordinate = double(sun_angle_index) / double(image_size_3d - 1);
 
 				double view_height = atmosphere_height * glm::pow(view_height_coordinate, 2.0);
 
