@@ -173,7 +173,7 @@ glm::dvec3 sample_table_2d(double table[image_size_2d][image_size_2d][3], glm::d
 	double height = get_ray_height(position);
 	double cos_angle = glm::dot(glm::normalize(position - earth_center), direction);
 
-	double height_coordinate = glm::clamp(glm::sqrt(height / atmosphere_height) * double(image_size_2d - 1), 0.0, double(image_size_2d - 1));
+	double height_coordinate = glm::clamp(glm::sqrt(glm::max(height, 0.0) / atmosphere_height) * double(image_size_2d - 1), 0.0, double(image_size_2d - 1));
 
 	double cos_angle_coordinate = glm::sign(cos_angle) * glm::sqrt(glm::abs(cos_angle));
 	cos_angle_coordinate = glm::clamp((0.5 + (0.5 * cos_angle_coordinate)) * double(image_size_2d - 1), 0.0, double(image_size_2d - 1));
