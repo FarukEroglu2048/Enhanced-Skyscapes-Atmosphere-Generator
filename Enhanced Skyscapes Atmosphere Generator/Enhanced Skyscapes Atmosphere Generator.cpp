@@ -27,7 +27,7 @@ const double mie_absorption_coefficient = mie_scattering_coefficient;
 const glm::dvec3 ozone_coefficient = glm::dvec3(2.291e-6, 1.54e-6, 0.0);
 
 const double rayleigh_scale_height = 8696.45;
-const double mie_scale_height = 1250.0;
+const double mie_scale_height = 1200.0;
 
 const double ozone_base = 22349.9;
 const double ozone_thickness = 35660.71;
@@ -118,10 +118,10 @@ double rayleigh_phase(double cos_angle)
 
 double mie_phase(double cos_angle)
 {
-	const double mie_anisotropy = 0.75;
-	const double mie_anisotropy_squared = glm::pow(mie_anisotropy_squared, 2.0);
+	const double mie_anisotropy = 0.70;
+	const double mie_anisotropy_squared = glm::pow(mie_anisotropy, 2.0);
 
-	return (3.0 * (1.0 - mie_anisotropy_squared) * (1.0 + pow(cos_angle, 2.0))) / (8.0 * glm::pi<double>() * (2.0 + mie_anisotropy_squared) * pow(1.0 + mie_anisotropy_squared - (2.0 * mie_anisotropy * cos_angle), 1.5));
+	return (3.0 * (1.0 - mie_anisotropy_squared) * (1.0 + glm::pow(cos_angle, 2.0))) / (8.0 * glm::pi<double>() * (2.0 + mie_anisotropy_squared) * glm::pow(1.0 + mie_anisotropy_squared - (2.0 * mie_anisotropy * cos_angle), 1.5));
 }
 
 glm::dvec3 render_transmittance(glm::dvec3 view_position, glm::dvec3 view_direction, bool render_sun_transmittance)
@@ -273,8 +273,8 @@ std::tuple<glm::dvec3, glm::dvec3> render_scattering(glm::dvec3 view_position, g
 
 int main()
 {
-    std::cout << "Generating files!" << std::endl;
-
+	std::cout << "Generating files!" << std::endl;
+	
 	std::vector<int> image_indices_2d = std::vector<int>(image_size_2d);
 	std::iota(image_indices_2d.begin(), image_indices_2d.end(), 0);
 
